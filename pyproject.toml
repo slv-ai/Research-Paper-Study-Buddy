@@ -1,0 +1,16 @@
+[project]
+name = "research-paper-study-buddy"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "arxiv>=2.3.1",
+    "chromadb>=1.3.6",
+    "openai>=2.11.0",
+    "pydantic-ai==1.2.1",
+    "pypdf2>=3.0.1",
+    "requests>=2.32.5",
+    "tiktoken>=0.12.0",
+    "toyaikit>=0.0.8",
+]
