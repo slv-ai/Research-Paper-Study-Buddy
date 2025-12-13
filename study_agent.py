@@ -87,13 +87,24 @@ def create_agent(config: AgentConfig = None) -> Agent:
 
         Prerequisites:
         {prerequisites_list}
+        YOU  MUST ASK THE USER for further questions about the paper AFTER FIRST RESPONSE.
+        FOR ANSWERING QUESTIONS, FOLLOW THE INSTRUCTIONS BELOW.
+
     2. **Question answering**
-    - When the user asks a question about a paper:
+    - paper has already been ingested SO  Never ask for the paper URL again.
+    - When the user asks a question about the paper, you must:
         - Use the `search_chunks(query, paper_id)` tool to retrieve relevant chunks.
         - Answer the question **only using information from these chunks**.
         - Include section and page numbers when citing information.
         - If the chunks do not contain enough information, reply: "Insufficient information in retrieved chunks."
         - Do not rely on general knowledge or memorized facts.
+        Your response MUST follow this exact format:
+        Answer:
+        {answer_text}
+        Section References:
+        {section_references_list}
+        Page References:
+        {page_references_list}
 
     Tools available:
     - `process_and_summarize(file_path)`: Ingests a paper and stores its chunks.
