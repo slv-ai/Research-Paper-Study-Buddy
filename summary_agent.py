@@ -1,13 +1,18 @@
 from dataclasses import dataclass
 from tools.paper_processor import PaperProcessor
-from tools.vector_chunks import VectorChunks
+from tools.vector_chunks import VectorStore
 from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolCallEvent
 from pydantic_ai.messages import ModelMessage, UserPromptPart
 from pydantic import BaseModel, Field
+from typing import List
 
-vector_store = VectorChunks()
+vector_store = VectorStore()
 paper_processor = PaperProcessor()
+
+
+class AgentConfig:
+    model: str = "openai:gpt-4o-mini"
 
 class NamedCallback:
 
@@ -29,52 +34,79 @@ class NamedCallback:
     async def __call__(self, ctx, event):
         return await self.print_function_calls(ctx, event)
 
-def process_and_summarize(ctx: RunContext, file_path: str) -> str:
-    """
-    A single tool that:
-    1. Loads and processes a document and extracts text and metadata
-    2. Splits into chunks for embedding
-    3. Stores chunks in vector DB
-    4. Summarizes the content based on summarize instructions
-
-    Returns: Final summary text.
-    """
-    # Step 1: Load and process document
+def process_and_summarize(file_path: str) -> str:
+    """Process paper, store chunks, return summary + prerequisites."""
+  
+    # Step 1: Fetch metadata and download PDF
     paper_metadata = paper_processor.fetch_paper(file_path)
     pdf_path = paper_processor.download_pdf(paper_metadata.pdf_url)
-    pages = paper_processor.extract_text_from_pdf(pdf_path)
 
-    # Step 2: Split into chunks
-    chunks = paper_processor.chunk_paper(pages, paper_metadata)
+    # Step 2:  Extract text + chunking
+    pages = paper_processor.extract_text_from_pdf(pdf_path)    
+    chunks = paper_processor.chunk_paper(pages, paper_metadata.arxiv_id)
 
     # Step 3: Store chunks in vector DB
-    vector_store.add_paper_chunks(chunks,metadata)
+    vector_store.add_paper_chunks(chunks,paper_metadata)
 
     # Step 4: Summarize content
-    summarize_instructions = """
-    You are a friendly and knowledgeable study buddy helping someone understand a research paper
-    Your approach:
-- Be conversational and encouraging
-- Explain concepts clearly with examples
-- Reference specific parts of the paper when answering
-- Ask clarifying questions when needed
-- Suggest related concepts to explore
-- Break down complex ideas into simple terms
-- Use analogies to make things relatable
+    full_text = "\n\n".join([c.content for c in chunks]) 
+       
+    return full_text
 
-When answering:
-- Base your answers on the paper content provided
-- If the paper doesn't contain the answer, say so
-- Cite which section/page you're referencing
-- Offer to explain prerequisites if needed"""
+def search_query(query: str) -> List[str]:
+    """Search for relevant paper chunks given a query"""
+    results = vector_store.search_relevant_chunks(query,PaperChunk.paper_id, n_results=5)
+    return [res['document'] for res in results]
+
+def create_agent(config: AgentConfig = None) -> Agent:
+    if config is None:
+        config = AgentConfig()
+
+    
+    assistant_instructions = """
+    You are a research assistant specialized in academic papers.
+
+    Behavior rules:
+
+    1. **Paper ingestion**
+    - When the user provides a paper URL or arXiv ID, you must:
+        - Use the `process_and_summarize(file_path)` tool.
+        - Return a concise **summary** of the paper.
+        - List **prerequisites** the reader should know to understand the paper.
+        - Do not use external knowledge—base the summary on the paper content.
+        - summary guidelines: Guidelines:
+        - Write clearly and concisely.
+        - Focus on the paper’s main contributions, methods, and findings.
+        - Do NOT introduce information that is not present in the paper.
+        - If prerequisites are not explicitly stated, infer them conservatively.
+        - Use simple, student-friendly language.
+        Your first response MUST follow this exact format:
+
+        Summary:
+        {summary_text}
+
+        Prerequisites:
+        {prerequisites_list}
+    2. **Question answering**
+    - When the user asks a question about a paper:
+        - Use the `search_chunks(query, paper_id)` tool to retrieve relevant chunks.
+        - Answer the question **only using information from these chunks**.
+        - Include section and page numbers when citing information.
+        - If the chunks do not contain enough information, reply: "Insufficient information in retrieved chunks."
+        - Do not rely on general knowledge or memorized facts.
+
+    Tools available:
+    - `process_and_summarize(file_path)`: Ingests a paper and stores its chunks.
+    - `search_chunks(query)`: Retrieves the most relevant chunks for a query.
+    """
     
 
-    return summary
-
-agent = Agent(
-        name="summarizer_agent",
-        instructions=summarize_instructions,
-        tools=[process_and_summarize],
-        model="gpt-4o-mini",
+                
+    agent = Agent(
+        name="study_agent",
+        instructions=assistant_instructions,
+        tools=[process_and_summarize,search_query],
+        model=config.model,
         
     )
+    return agent

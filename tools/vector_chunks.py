@@ -2,6 +2,26 @@ from typing import List, Dict, Any
 import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
+from pydantic import BaseModel, Field
+
+class PaperChunk(BaseModel):
+    """A chunk of paper content"""
+    chunk_id: str
+    paper_id: str
+    content: str
+    section: str  # "abstract", "introduction", "methods", etc.
+    chunk_index: int
+    page_number: int
+
+class PaperMetadata(BaseModel):
+    """Paper metadata"""
+    arxiv_id: str
+    title: str
+    authors: List[str]
+    published_date: str
+    abstract: str
+    pdf_url: str
+
 class VectorStore:
     """Manages paper chunks in a vector database"""
     def __init__(self,persist_directory: str = "./chroma_db"):
@@ -53,9 +73,9 @@ class VectorStore:
         )
         print(f"Added {len(chunks)} chunks to vector store")
 
-        def search_relevant_chunks(self,query: str,paper_id: str,n_results: int = 5) -> List[Dict[str, Any]]:
-            """Search for relevant chunks given a query"""
-        
+    def search_relevant_chunks(self,query: str,paper_id: str,n_results: int = 5) -> List[Dict[str, Any]]:
+        """Search for relevant chunks given a query"""
+    
         # Generate query embedding
         query_embedding = self.embedding_model.encode([query]).tolist()
         
@@ -79,7 +99,7 @@ class VectorStore:
         
         return relevant_chunks
 
- def delete_paper(self, paper_id: str):
+    def delete_paper(self, paper_id: str):
         """Remove all chunks for a paper"""
         # Query all chunks for this paper
         results = self.collection.get(where={"paper_id": paper_id})
