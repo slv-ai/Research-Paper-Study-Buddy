@@ -75,6 +75,21 @@ class PaperProcessor:
             
         return pages
     
+    def is_arxiv_url(self, text : str) -> bool:
+        """Check if text is an arXiv URL or ID"""
+        text = text.strip()
+
+        # arXiv URL
+        if "arxiv.org/abs/" in text or "arxiv.org/pdf/" in text:
+            return True
+
+        # arXiv ID like 1706.03762 or 1706.03762v1
+        arxiv_id_pattern = r"^\d{4}\.\d{4,5}(v\d+)?$"
+        if re.match(arxiv_id_pattern, text):
+            return True
+
+        return False
+    
     def extract_arxiv_id(self, input_str: str) -> str:
         """Extract ArXiv ID"""
         patterns = [
@@ -90,31 +105,17 @@ class PaperProcessor:
         
         return input_str.strip()
     
-    def chunk_paper(
-        self, 
-        pages: List[tuple], 
-        paper_id: str,
-        chunk_size: int = 1000,
-        overlap: int = 200
-    ) -> List[PaperChunk]:
-        """Create semantic chunks from paper"""
+    def chunk_paper(self, pages: List[tuple], paper_id: str, chunk_size: int = 300, overlap: int = 50) -> List[PaperChunk]:
         chunks = []
         chunk_index = 0
         for page_num, page_text in pages:
-            # Detect section
             section = self.detect_section(page_text)
-            
-            # Split page into chunks with overlap
             tokens = self.tokenizer.encode(page_text)
-            
             for i in range(0, len(tokens), chunk_size - overlap):
                 chunk_tokens = tokens[i:i + chunk_size]
                 chunk_text = self.tokenizer.decode(chunk_tokens)
-                
-                # Skip very short chunks
-                if len(chunk_text.strip()) < 100:
+                if len(chunk_text.strip()) < 50:
                     continue
-                
                 chunks.append(PaperChunk(
                     chunk_id=f"{paper_id}_chunk_{chunk_index}",
                     paper_id=paper_id,
@@ -123,10 +124,9 @@ class PaperProcessor:
                     chunk_index=chunk_index,
                     page_number=page_num
                 ))
-                
                 chunk_index += 1
-        
         return chunks
+
     
     def detect_section(self, text: str) -> str:
         """Detect paper section from text"""

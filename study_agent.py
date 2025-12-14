@@ -53,9 +53,17 @@ def process_and_summarize(file_path: str) -> str:
        
     return full_text
 
-def search_query(query: str) -> List[str]:
-    """Search for relevant paper chunks given a query"""
-    results = vector_store.search_relevant_chunks(query,PaperChunk.paper_id, n_results=5)
+def search_query(prompt: str) -> list[str]:
+    """Search all chunks in the vector store without filtering by paper"""
+    query = prompt.strip()
+    
+    if not query:
+        raise ValueError("Query is empty. Please provide a valid question.")
+
+    results = vector_store.search_relevant_chunks(
+        query=query,
+        n_results=15  # no paper_id filter
+    )
     return [res['document'] for res in results]
 
 def create_agent(config: AgentConfig = None) -> Agent:
@@ -87,16 +95,23 @@ def create_agent(config: AgentConfig = None) -> Agent:
 
         Prerequisites:
         {prerequisites_list}
-        YOU  MUST ASK THE USER for further questions about the paper AFTER FIRST RESPONSE.
+        MUST Remember the paper_id for future questions.
+        YOU  MUST ASK THE USER for further questions about the paper ingested paper{title}  AFTER FIRST RESPONSE.
         FOR ANSWERING QUESTIONS, FOLLOW THE INSTRUCTIONS BELOW.
 
     2. **Question answering**
-    - paper has already been ingested SO  Never ask for the paper URL again.
-    - When the user asks a question about the paper, you must:
-        - Use the `search_chunks(query, paper_id)` tool to retrieve relevant chunks.
-        - Answer the question **only using information from these chunks**.
-        - Include section and page numbers when citing information.
-        - If the chunks do not contain enough information, reply: "Insufficient information in retrieved chunks."
+    -When the user asks a question AND a paper has already been ingested:
+        When answering questions:
+        -  Call `search_query(query, paper_id)` to retrieve relevant chunks.
+        - FOR EVERY QUERY : PERFORM ATLEAST 3 AND ATMOST 6 SEARCHES TO RETRIEVE RELEVANT CHUNKS.
+        - Each search MUST use different phrasings of the query to maximize coverage.
+        -KEEP all searches RELEVANT ONLY TO THE PAPER WITH paper_id.
+        - If the concept is described across multiple retrieved chunks,
+        synthesize them into a single explanation.
+        - You may paraphrase, but must stay faithful to the retrieved content.
+        - Cite section names and page numbers where possible.
+        - Only respond with "Insufficient information in retrieved chunks"
+        if the concept is not discussed anywhere in the retrieved content.
         - Do not rely on general knowledge or memorized facts.
         Your response MUST follow this exact format:
         Answer:
@@ -105,6 +120,12 @@ def create_agent(config: AgentConfig = None) -> Agent:
         {section_references_list}
         Page References:
         {page_references_list}
+    3. **General rules**
+        CRITICAL RULES
+        =====================
+        - Never answer from general knowledge.
+        - Never request a paper URL again if a paper is already loaded.
+        - Do not explain concepts unless they appear in retrieved chunks.
 
     Tools available:
     - `process_and_summarize(file_path)`: Ingests a paper and stores its chunks.

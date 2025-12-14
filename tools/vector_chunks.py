@@ -50,9 +50,15 @@ class VectorStore:
         if not chunks:
             return
         
-        #generate embeddings
-        texts = [chunk.content for chunk in chunks]
-        embeddings = self.embedding_model.encode(texts).tolist()
+        # Filter out invalid chunks
+        valid_chunks = [chunk for chunk in chunks if chunk.content and chunk.content.strip()]
+        if not valid_chunks:
+            return
+        
+        # Generate embeddings
+        texts = [chunk.content for chunk in valid_chunks]
+        embeddings = self.embedding_model.encode(texts).tolist()  # safe now
+        
         # Prepare metadata
         metadatas = [
             {
@@ -62,42 +68,57 @@ class VectorStore:
                 "page": chunk.page_number,
                 "chunk_index": chunk.chunk_index
             }
-            for chunk in chunks
+            for chunk in valid_chunks
         ]
+        
         # Add to collection
         self.collection.add(
             embeddings=embeddings,
             documents=texts,
             metadatas=metadatas,
-            ids=[chunk.chunk_id for chunk in chunks]
+            ids=[chunk.chunk_id for chunk in valid_chunks]
         )
-        print(f"Added {len(chunks)} chunks to vector store")
+        print(f"Added {len(valid_chunks)} chunks to vector store")
+       
 
-    def search_relevant_chunks(self,query: str,paper_id: str,n_results: int = 5) -> List[Dict[str, Any]]:
-        """Search for relevant chunks given a query"""
-    
-        # Generate query embedding
-        query_embedding = self.embedding_model.encode([query]).tolist()
-        
-        # Search
+
+    def search_relevant_chunks(self, query: str,  n_results: int = 15):
+        query_embedding = self.embedding_model.encode(query).tolist()
+
         results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=n_results,
-            where={"paper_id": paper_id}
+            #where={"paper_id": paper_id}
         )
 
-        # Format results
         relevant_chunks = []
-        for i in range(len(results['ids'][0])):
+        query_lower = query.lower()
+
+        for i in range(len(results["ids"][0])):
+            content = results["documents"][0][i]
+
+            # keyword boost
+            keyword_score = sum(
+                1 for word in query_lower.split()
+                if word in content.lower()
+            )
+
             relevant_chunks.append({
-                'chunk_id': results['ids'][0][i],
-                'content': results['documents'][0][i],
-                'section': results['metadatas'][0][i]['section'],
-                'page': results['metadatas'][0][i]['page'],
-                'distance': results['distances'][0][i] if 'distances' in results else None
+                "chunk_id": results["ids"][0][i],
+                "content": content,
+                "section": results["metadatas"][0][i]["section"],
+                "page": results["metadatas"][0][i]["page"],
+                "distance": results["distances"][0][i],
+                "keyword_score": keyword_score
             })
-        
-        return relevant_chunks
+
+        # Re-rank by keyword_score first, then distance
+        relevant_chunks.sort(
+            key=lambda x: (-x["keyword_score"], x["distance"])
+        )
+
+        return relevant_chunks[:n_results]
+
 
     def delete_paper(self, paper_id: str):
         """Remove all chunks for a paper"""
