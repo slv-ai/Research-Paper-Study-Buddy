@@ -2,14 +2,14 @@ import os
 import re
 import json
 import uuid
-import PyPDF2
+import fitz
 import arxiv
 import io
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 from pydantic import BaseModel, Field
-import tiktoken
+
 
 
 class PaperMetadata(BaseModel):
@@ -33,47 +33,67 @@ class PaperChunk(BaseModel):
 class PaperProcessor:
     """ process papers and create chunks for embedding """
     def __init__(self):
-        self.tokenizer = tiktoken.encoding_for_model("gpt-4")
+        pass        
     
     def fetch_paper(self, arxiv_id: str) -> PaperMetadata:
-        """Fetch paper metadata"""
         arxiv_id = self.extract_arxiv_id(arxiv_id)
-        
         search = arxiv.Search(id_list=[arxiv_id])
-        paper = next(search.results())
-        
+
+        try:
+            paper = next(search.results())
+        except StopIteration:
+            raise ValueError(f"No paper found for arXiv ID {arxiv_id}")
+
+        published = (
+            paper.published.strftime('%Y-%m-%d')
+            if paper.published else ""
+        )
+
         return PaperMetadata(
             arxiv_id=arxiv_id,
             title=paper.title,
-            authors=[author.name for author in paper.authors],
-            published_date=paper.published.strftime('%Y-%m-%d'),
+            authors=[a.name for a in paper.authors],
+            published_date=published,
             abstract=paper.summary,
             pdf_url=paper.pdf_url
         )
 
-    def download_pdf(self, pdf_url: str, save_path: str = "temp_paper.pdf") -> str:
-        """Download PDF"""
+
+    def download_pdf(self, pdf_url: str, save_path="temp_paper.pdf") -> str:
+        if not pdf_url:
+            raise ValueError("PDF URL is empty")
+
         import requests
-        response = requests.get(pdf_url)
+        response = requests.get(pdf_url, timeout=30)
         response.raise_for_status()
-        
-        with open(save_path, 'wb') as f:
+
+        with open(save_path, "wb") as f:
             f.write(response.content)
-        
+
         return save_path
 
-    def extract_text_from_pdf(self,pdf_path: str) -> List[tuple]:
-        """ download pdf and extract text """
-        
-        #extract text
-        reader = PyPDF2.PdfReader(pdf_path)
+
+    def extract_text_from_pdf(self, pdf_path: str) -> List[tuple]:
+        doc = fitz.open(pdf_path)
         pages = []
-            
-        for i, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
+
+        for i, page in enumerate(doc):
+            text = page.get_text().strip()
+
+            if not text:
+                blocks = page.get_text("blocks")
+                text = "\n".join(
+                    b[4] for b in blocks
+                    if len(b) > 4 and isinstance(b[4], str)
+                )
+
             pages.append((i + 1, text))
-            
+
+        doc.close()
         return pages
+
+        
+        
     
     def is_arxiv_url(self, text : str) -> bool:
         """Check if text is an arXiv URL or ID"""
@@ -85,7 +105,7 @@ class PaperProcessor:
 
         # arXiv ID like 1706.03762 or 1706.03762v1
         arxiv_id_pattern = r"^\d{4}\.\d{4,5}(v\d+)?$"
-        if re.match(arxiv_id_pattern, text):
+        if re.search(arxiv_id_pattern, text):
             return True
 
         return False
@@ -101,33 +121,35 @@ class PaperProcessor:
         for pattern in patterns:
             match = re.search(pattern, input_str)
             if match:
-                return match.group(1).replace('v', '.')
+                return match.group(1)
         
         return input_str.strip()
     
-    def chunk_paper(self, pages: List[tuple], paper_id: str, chunk_size: int = 300, overlap: int = 50) -> List[PaperChunk]:
+    def chunk_paper(self, pages: List[tuple], paper_id: str, chunk_size: int = 800, overlap: int = 200) -> List[PaperChunk]:
         chunks = []
         chunk_index = 0
         for page_num, page_text in pages:
-            section = self.detect_section(page_text)
-            tokens = self.tokenizer.encode(page_text)
-            for i in range(0, len(tokens), chunk_size - overlap):
-                chunk_tokens = tokens[i:i + chunk_size]
-                chunk_text = self.tokenizer.decode(chunk_tokens)
-                if len(chunk_text.strip()) < 50:
-                    continue
-                chunks.append(PaperChunk(
-                    chunk_id=f"{paper_id}_chunk_{chunk_index}",
-                    paper_id=paper_id,
-                    content=chunk_text,
-                    section=section,
-                    chunk_index=chunk_index,
-                    page_number=page_num
-                ))
-                chunk_index += 1
+            if not page_text or len(page_text.strip()) < 50:
+                continue
+            start = 0
+            text_length = len(page_text)
+            while start < text_length:
+                end = start + chunk_size
+                chunk_text = page_text[start:end]
+                if len(chunk_text.strip()) >= 150 :
+                    chunks.append(PaperChunk(
+                        chunk_id=f"{paper_id}_chunk_{chunk_index}",
+                        paper_id=paper_id,
+                        content=chunk_text,
+                        section = "content",
+                        chunk_index=chunk_index,
+                        page_number=page_num
+                    ))
+                    chunk_index += 1
+                start += chunk_size - overlap
+
         return chunks
 
-    
     def detect_section(self, text: str) -> str:
         """Detect paper section from text"""
         text_lower = text.lower()
