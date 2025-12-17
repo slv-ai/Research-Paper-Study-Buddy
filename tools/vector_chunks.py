@@ -36,7 +36,8 @@ class VectorStore:
         #create or get collection
         self.collection = self.client.get_or_create_collection(
             name="arxiv_papers",
-            metadata={"description": "arxiv paper chunks"}
+            metadata={"description": "arxiv paper chunks",
+                      "hnsw:space": "cosine"}
         )
 
         #embeddinng model
@@ -57,7 +58,8 @@ class VectorStore:
         
         # Generate embeddings
         texts = [chunk.content for chunk in valid_chunks]
-        embeddings = self.embedding_model.encode(texts).tolist()  # safe now
+        embeddings = self.embedding_model.encode(texts,
+                                                normalize_embeddings=True).tolist()  # safe now
         
         # Prepare metadata
         metadatas = [
@@ -83,7 +85,7 @@ class VectorStore:
 
 
     def search_relevant_chunks(self, query: str,  n_results: int = 15):
-        query_embedding = self.embedding_model.encode(query).tolist()
+        query_embedding = self.embedding_model.encode(query, normalize_embeddings=True).tolist()
 
         results = self.collection.query(
             query_embeddings=[query_embedding],
