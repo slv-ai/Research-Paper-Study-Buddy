@@ -93,18 +93,18 @@ class VectorStore:
             #where={"paper_id": paper_id}
         )
         # ===== TEMP DEBUG LOGGING =====
-        print("\n[DEBUG] Raw retrieval results")
-        print("Query:", query)
-        print("Number of hits:", len(results["ids"][0]))
+        # print("\n[DEBUG] Raw retrieval results")
+        # print("Query:", query)
+        # print("Number of hits:", len(results["ids"][0]))
 
-        for i in range(len(results["ids"][0])):
-            print(f"\n--- HIT {i} ---")
-            print("Chunk ID:", results["ids"][0][i])
-            print("Section:", results["metadatas"][0][i].get("section"))
-            print("Page:", results["metadatas"][0][i].get("page"))
-            print("Distance:", results["distances"][0][i])
-            print("Content preview:")
-            print(results["documents"][0][i][:400])
+        # for i in range(len(results["ids"][0])):
+        #     print(f"\n--- HIT {i} ---")
+        #     print("Chunk ID:", results["ids"][0][i])
+        #     print("Section:", results["metadatas"][0][i].get("section"))
+        #     print("Page:", results["metadatas"][0][i].get("page"))
+        #     print("Distance:", results["distances"][0][i])
+        #     print("Content preview:")
+        #     print(results["documents"][0][i][:400])
         # ===== END DEBUG =====
 
         relevant_chunks = []

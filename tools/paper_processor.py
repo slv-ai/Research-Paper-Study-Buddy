@@ -125,7 +125,7 @@ class PaperProcessor:
         
         return input_str.strip()
     
-    def chunk_paper(self, pages: List[tuple], paper_id: str, chunk_size: int = 800, overlap: int = 200) -> List[PaperChunk]:
+    def simple_overlap_chunking(self, pages: List[tuple], paper_id: str, chunk_size: int = 800, overlap: int = 200) -> List[PaperChunk]:
         chunks = []
         chunk_index = 0
         for page_num, page_text in pages:
@@ -149,6 +149,74 @@ class PaperProcessor:
                 start += chunk_size - overlap
 
         return chunks
+
+    import re
+
+    def clean_text(self, text: str) -> str:
+        """Clean extracted text for RAG ingestion."""
+
+        # Remove token artifacts (<pad>, <EOS>, etc.)
+        text = re.sub(r"<\s*(pad|EOS|eos)\s*>", " ", text)
+
+        # Collapse weird spacing
+        text = re.sub(r"\s+", " ", text)
+
+        # Remove figure & table captions
+        text = re.sub(r"Figure\s*\d+[:\.]\s*.*?(?=Figure\s*\d+[:\.]|$)", " ", text)
+        text = re.sub(r"Table\s*\d+[:\.]\s*.*?(?=Table\s*\d+[:\.]|$)", " ", text)
+
+        # Remove page headers/footers that repeat every page (heuristic)
+        text = re.sub(r"^Page\s*\d+\s*", " ", text, flags=re.MULTILINE)
+
+        # Remove lines with too many single letters (e.g., token dumps)
+        lines = text.split("\n")
+        cleaned_lines = []
+        for line in lines:
+            tokens = line.strip().split()
+            short_tokens = sum(1 for t in tokens if len(t) == 1)
+            if len(tokens) > 0 and short_tokens / len(tokens) > 0.4:
+                continue
+            cleaned_lines.append(line)
+        text = " ".join(cleaned_lines)
+
+        # Collapse whitespace again
+        text = re.sub(r"\s+", " ", text).strip()
+
+        return text
+
+
+    def paragraph_chunking(self, pages: List[tuple], paper_id: str) -> List[PaperChunk]:
+        "paragraph based chunking"
+        chunks=[]
+        current_chunk=""
+        chunk_idx=0
+        for page_num,page_text in pages:
+            paragraphs=[p.strip() for p in page_text.split('\n\n') if len(p.strip()) > 50]
+            for para in paragraphs:
+                if len(current_chunk) + len(para) > 1000:
+                    chunks.append(PaperChunk(
+                        chunk_id=f"{paper_id}_chunk_{chunk_idx}",
+                        paper_id=paper_id,
+                        content=current_chunk.strip(),
+                        section = "content",
+                        chunk_index=chunk_idx,
+                        page_number=page_num
+                    ))
+                    chunk_idx += 1
+                    current_chunk = para
+                else:
+                    current_chunk += "\n\n" + para
+        if current_chunk:
+                chunks.append(PaperChunk(
+                    chunk_id=f"{paper_id}_chunk_{chunk_idx}",
+                    paper_id=paper_id,
+                    content=current_chunk.strip(),
+                    section = "content",
+                    chunk_index=chunk_idx,
+                    page_number=page_num
+                ))
+        return chunks
+
 
     def detect_section(self, text: str) -> str:
         """Detect paper section from text"""

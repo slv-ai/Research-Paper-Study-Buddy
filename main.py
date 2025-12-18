@@ -31,7 +31,7 @@ while True:
         result = run_agent_sync(user_input)
         current_paper_id = current_id_processor.extract_arxiv_id(user_input)
         print(result.output)
-        print("\nYou can now ask questions about this paper.\n")
+        #print("\nYou can now ask questions about this paper.\n")
         continue
 
     

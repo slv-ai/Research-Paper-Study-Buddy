@@ -42,8 +42,10 @@ def process_and_summarize(file_path: str) -> str:
     pdf_path = paper_processor.download_pdf(paper_metadata.pdf_url)
 
     # Step 2:  Extract text + chunking
-    pages = paper_processor.extract_text_from_pdf(pdf_path)    
-    chunks = paper_processor.chunk_paper(pages, paper_metadata.arxiv_id)
+    pages = paper_processor.extract_text_from_pdf(pdf_path)
+    text = [(page_num, paper_processor.clean_text(page_text)) for page_num, page_text in pages]    
+
+    chunks = paper_processor.paragraph_chunking(text, paper_metadata.arxiv_id)
 
     # Step 3: Store chunks in vector DB
     vector_store.add_paper_chunks(chunks,paper_metadata)
